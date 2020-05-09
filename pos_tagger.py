@@ -104,7 +104,7 @@ for key in data.testing_set.keys[:3]:
     print("\n")
 
 tags = [tag for i, (tag, word) in enumerate(data.training_set.stream())]
-def unigeram_counts(sequences):
+def unigram_counts(sequences):
     tag_counter = {}
     for tag in sequences:
         if tag in tag_counter.keys():
@@ -112,6 +112,8 @@ def unigeram_counts(sequences):
         else:
             tag_counter[tag] = 1
     return tag_counter
+
+tag_unigrams = unigram_counts(tags)
 
 tags = [tag for i, (word, tag) in enumerate(data.training_set.stream())]
 tag_pairs = list(zip(tags[:-1], tags[1:]))
@@ -141,3 +143,34 @@ def ending_counts(sequences):
     for tag in data.training_set.tagset:
         ending_tags[tag] = len([seq[-1] for seq in sequences if seq[-1] == tag])
     return ending_tags
+
+tag_ends = ending_counts(data.training_set.Y)
+
+basic_model = HiddenMarkovModel(name="base-hmm-tagger")
+tag_word_counter = pair_counts(tags, words)
+states = {}
+
+for tag, words in tag_word_counter.items():
+    words_tag_state = defaultdict(list)
+    for word in words.keys():
+        words_tag_state[word] = tag_word_counter[tag][word]/ tag_unigrams[tag]
+    emission = DiscreteDistribution(dict(words_tag_state))
+    states[tag] = State(emission, name = tag)
+
+basic_model.add_states(list(states.values()))
+
+for tag in data.training_set.tagset:
+    state = states[tag]
+    basic_model.add_transition(basic_model.start, state, tag_starts[tag]/len(data.training_set))
+
+for tag in data.training_set.tagset:
+    state= states[tag]
+    basic_model.add_transition(state, basic_model.end, tag_ends[tag]/tag_unigrams[tag])
+
+for tag1 in data.training_set.tagset:
+    state1 = states[tag1]
+    for tag2 in data.training_set.tagset:
+        state2 = states[tag2]
+        basic_model.add_transition(state1, state2, tag_bigrams[(tag1, tag2)]/tag_unigrams[tag1])
+
+basic_model.bake()
